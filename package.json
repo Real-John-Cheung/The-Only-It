@@ -1,0 +1,19 @@
+{
+  "name": "the-only-it",
+  "description": "repo for wip generative text work唯一的祂（暫名）",
+  "version": "1.0.0",
+  "main": "make-model.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Real-John-Cheung/The-Only-It.git"
+  },
+  "author": "JohnC",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/Real-John-Cheung/The-Only-It/issues"
+  },
+  "homepage": "https://github.com/Real-John-Cheung/The-Only-It#readme"
+}

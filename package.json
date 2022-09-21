@@ -3,6 +3,7 @@
   "description": "repo for wip generative text work唯一的祂（暫名）",
   "version": "1.0.0",
   "main": "make-model.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

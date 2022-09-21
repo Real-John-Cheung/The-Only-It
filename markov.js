@@ -1,204 +1,115 @@
 // JohnC 2022
 // A customized markov chain model based on the one used in https://rednoise.org/rita
 
-import Mt from "./mt";
+import Mt from "./mt.js";
+import { parse, stringify } from "./flatted.js";
 
 const randomnizer = new Mt();
+const sentenceSeparater = ";";
+const tokenSeparater = "/";
 
+/*
+    static makeModel(): treeify the model and return an object (in json?)
+    constructor():
+    loadModel(): add model to a list of models
+    * generate(): generate from the models
+*/
 
 class Markov {
-    constructor(opts = {}) {
-        this.n = opts.n || 3; //default n is 3
-        this.root = new Node(null, "ROOT");
-        this.maxAttempts = opts.maxAttempts || 999;
-        this.sentenceStarts = [];
-        this.sentenceEnds = new Set();
-        if (opts.text) this.addText(opts.text);
-    }
 
-    addText(text, multiplier = 1) {
-        // ideal data structure of text: [[token,token,...],[token,token,...]]
-        // if input is a string, define token separater:'/', sentence separater: ';'
-        if (typeof text === 'string') text = this.processRawText(text);
-
-        let allTokens = [];
+    static makeModel(opts = {}) {
+        const root = new Node(null, "ROOT");
+        const n = opts.n || 3
+        const text = opts.text;
+        const multiplier = opts.multiplier || 1;
+        const sentenceStarts = [];
+        const sentenceEnds = new Set();
+        if (!text || !text.length) throw Error("[makeModel]: text is require for making model");
+        // ideal format of text: [['token','token',...],[]...]
+        const processText = (raw) => { 
+            let r = raw.split(sentenceSeparater);
+            for (let i = 0; i < r.length; i++) {
+                r[i] = r[i].split(tokenSeparater);
+            }
+            return r;
+        }
+        let sents = Array.isArray(text) ? text : processText(text);
+        let wrap, allTokens = [];
         for (let k = 0; k < multiplier; k++) {
-            for (let i = 0; i < text.length; i++) {
-                let tokens = text[i];
-                this.sentenceStarts.push(tokens[0]);
-                this.sentenceEnds.add(tokens[tokens.length - 1]);
+            for (let i = 0; i < sents.length; i++) {
+                let tokens = sents[i];
+                sentenceStarts.push(tokens[0]);
+                sentenceEnds.add(tokens[tokens.length - 1]);
                 allTokens.push(...tokens);
             }
-            this.treeify(allTokens);
-        }
-    }
-
-    treeify(tokens) {
-        let root = this.root;
-        for (let i = 0; i < tokens.length; i++) {
-            let node = root;
-            let fragment = tokens.slice(i, i + this.n);
-            let wrap = 0;
-            for (let j = 0; j < this.n; j++) {
-                let hidden = false;
-                if (j >= fragment.length) {
-                    fragment[j] = tokens[wrap++];
-                    hidden = true
-                }
-                node = node.addChild(fragment[j]);
-                if (hidden) node.hidden = true;
-            }
-        }
-    }
-
-    * generate(count, opts = {}) {
-        // this generator yield a token each time, if count < 0, do it endlessly
-        // to smooth the outcome time, a buffer should be used
-
-        const num = count < 0 ? true : count;
-
-        let tries = 0, tokens = [], usedStarts = [];
-        let minIdx = 0, sentenceIdxs = [];
-        let markedNodes = [];
-
-        const unmarkNodes = () => {
-            markedNodes.forEach(n => n.marked = false);
-        }
-
-        const markNode = (node) => {
-            if (node) {
-                node.marked = tokens.reduce((acc, e) => acc + e.token, '');
-                markedNodes.push(node);
-            }
-        }
-
-        const resultCount = () => {
-            return tokens.filter(t => this._isEnd(t)).length;
-        }
-
-        const notMarked = (cn) => {
-            let tmap = tokens.reduce((acc, e) => acc + e.token, '');
-            return cn.marked !== tmap;
-        }
-
-        const fail = (msg, sentence, forceBacktrack) => {
-            tries++;
-            let sentIdx = sentenceIdx(); //?
-            sentence = sentence || this._flatten(tokens.slice(sentIdx)); //?
-            if (tries >= this.maxAttempts) throwError(tries, resultCount()); //?
-
-            let parent = this._pathTo(tokens);
-            let numOfChildren = parent ? parent.childNodes({ filter: notMarked }).length : 0;
-
-            if (forceBacktrack || numOfChildren === 0) {
-                backtrack();
-            }
-        }
-
-        const backtrack = () => {
-            let parent, tc;
-            for (let i = 0; i < 99; i++) {
-                let last = tokens.pop();
-                markNode(last);
-
-                if (this._isEnd(last)) sentenceIdxs.pop(); //?
-                let sentIdx = sentenceIdx();
-                let backtrackUntil = Math.max(sentIdx, minIdx);
-
-                parent = this._pathTo(tokens);
-                tc = parent.childNodes({ filter: notMarked });
-
-                if (tokens.length <= backtrackUntil) {
-
-                    if (minIdx > 0) { // have seed
-                        if (tokens.length <= minIdx) { // back at seed
-                            if (!tc.length) throw Error('back at barren-seed1: case 0');
-                            return true;
-                        }
-                        else { // back at sentence-start with seed
-                            if (!tc.length) {
-                                sentenceIdxs.pop();
-                            }
-                            else {  // continue
-                            }
-                        }
+            // treeify
+            for (let i = 0; i < allTokens.length; i++) {
+                let node = root;
+                let fragment = allTokens.slice(i, i + n);
+                let wrap = 0;
+                for (let j = 0; j < n; j++) {
+                    let hidden = false;
+                    if (j >= fragment.length) {
+                        fragment[j] = allTokens[wrap++];
+                        hidden = true;
                     }
-                    else {             // TODO: recheck
-                        if (!tokens.length) {
-                            sentenceIdxs = [];
-                            return selectStart();
-                        }
-                    }
-
-                    return true;
-                }
-
-                if (tc.length) {
-                    sentIdx = sentenceIdx();
-                    return parent;
+                    node = node.addChild(fragment[j]);
+                    if (hidden) node.hidden = true;
                 }
             }
-
-            throw Error('Invalid state in backtrack() [' + tokens.map(t => t.token) + ']');
         }
 
-        const sentenceIdx = () => {
-            let len = sentenceIdxs.length;
-            return len ? sentenceIdxs[len - 1] : 0;
+        // packing
+        let meta = {
+            n: n,
+            sentenceStarts: sentenceStarts,
+            sentenceEnds: [...sentenceEnds], //set => array for packing
         }
-
-        const selectStart = () => {
-            let seed = opts.seed;
-            // seed: ["token","token", ...], raw text: devided by '/'
-            if (seed && seed.length) {
-                if (typeof seed === 'string') seed = seed.split("/");
-                let node = this._pathTo(seed, this.root);
-                while (!node.isRoot()) {
-                    tokens.unshift(node);
-                    node = node.parent;
-                }
-            } else if (!tokens.length || this._isEnd(tokens[tokens.length - 1])) {
-                let usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
-                if (!usableStarts.length) throw Error('No valid sentence-starts remaining');
-                let start = randomnizer.random(usableStarts);
-                let startTok = this.root.child(start);
-                markNode(startTok);
-                usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
-                tokens.push(startTok);
-            } else {
-                throw Error('Invalid call to selectStart: ' + this._flatten(tokens));
+        /*
+        {
+            meta: {
+                n:number,
+                sentenceStarts:[],
+                sentenceEnds:[]
             }
+            root: Node
         }
-        //----------------------------------------------------------------------
+        */
 
-        selectStart();
+        let model = {
+            meta: meta,
+            root: root
+        }
 
-        // start generating
-        let endless = num === true
-        while (endless || resultCount() < num) {
-           // TODO
+        let data = Object.keys(model).reduce((acc, k) => Object.assign(acc, { [k]: model[k] }), {});
+        console.log(data);
+        return stringify(data);
+    }
+        
+    constructor(opts = {}) {
+        this.maxAttempts = opts.maxAttempts || 999;
+        this.models = []
+        if (opts.models) this.loadModels(opts.models);
+        if (opts.model) this.loadModel(opts.model);
+    }
+
+    loadModels(models) {
+        for (let i = 0; i < models.length; i++) {
+            const model = models[i];
+            this.loadModels(model)
         }
     }
 
-    processRawText(raw) {
-        let expanded = raw.split(";");
-        for (let i = 0; i < expanded.length; i++) {
-            expanded[i] = expanded[i].split("/");
-        }
-        return expanded;
-    }
+    loadModel(model) {
+        let m = {};
+        let parsed = parse(model);
+        m.sentenceEnds = new Set(...parsed.meta.sentenceEnds)
+        m.sentenceStarts = parsed.meta.sentenceStarts.slice();
+        m.n = parsed.meta.n;
 
-
-    _pathTo() {
-
-    }
-
-    _flatten() {
-
-    }
-
-    _isEnd() {
-
+        m.root = new Node(null, "ROOT");
+        populate(m.root, parsed.root);
+        this.models.push(m)
     }
 }
 
@@ -262,6 +173,16 @@ class Node {
         }
         node.count += count;
         return node;
+    }
+}
+
+function populate(objNode, jsonNode) {
+    if (!jsonNode) return;
+    let children = Object.values(jsonNode.children);
+    for (let i = 0; i < children.length; i++) {
+        let child = children[i];
+        let newNode = objNode.addChild(child.token, child.count);
+        populate(newNode, child);
     }
 }
 

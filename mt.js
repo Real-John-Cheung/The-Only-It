@@ -1,4 +1,4 @@
-// JohnC 2022
+// (c) JohnC 2022
 // a customised Mersenne Twister based on:
 // the Mersenne Twister used in https://rednoise.org/rita
 // and https://github.com/bmurray7/mersenne-twister-examples/blob/master/javascript-mersenne-twister.js 

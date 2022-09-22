@@ -1,15 +1,26 @@
-// JohnC 2022
+// (c) JohnC 2022
 // A customized markov chain model based on the one used in https://rednoise.org/rita
 
 import Mt from "./mt.js";
 import { parse, stringify } from "./flatted.js";
+
+function isSubArray(find, arr) {
+    if (!arr || !arr.length) return false;
+    OUT: for (let i = find.length - 1; i < arr.length; i++) {
+        for (let j = 0; j < find.length; j++) {
+            if (find[find.length - j - 1] !== arr[i - j]) continue OUT;
+            if (j === find.length - 1) return true;
+        }
+    }
+    return false;
+}
 
 const randomnizer = new Mt();
 const sentenceSeparater = ";";
 const tokenSeparater = "/";
 
 /*
-    static makeModel(): treeify the model and return an object (in json?)
+    static makeModel(): treeify the model and return an object (in json)
     constructor():
     loadModel(): add model to a list of models
     * generate(): generate from the models
@@ -26,7 +37,7 @@ class Markov {
         const sentenceEnds = new Set();
         if (!text || !text.length) throw Error("[makeModel]: text is require for making model");
         // ideal format of text: [['token','token',...],[]...]
-        const processText = (raw) => { 
+        const processText = (raw) => {
             let r = raw.split(sentenceSeparater);
             for (let i = 0; i < r.length; i++) {
                 r[i] = r[i].split(tokenSeparater);
@@ -85,31 +96,77 @@ class Markov {
         console.log(data);
         return stringify(data);
     }
-        
+
     constructor(opts = {}) {
         this.maxAttempts = opts.maxAttempts || 999;
-        this.models = []
-        if (opts.models) this.loadModels(opts.models);
         if (opts.model) this.loadModel(opts.model);
     }
 
-    loadModels(models) {
-        for (let i = 0; i < models.length; i++) {
-            const model = models[i];
-            this.loadModels(model)
+    loadModel(model) {
+        let parsed = parse(model);
+        this.sentenceEnds = new Set(...parsed.meta.sentenceEnds)
+        this.sentenceStarts = parsed.meta.sentenceStarts.slice();
+        this.n = parsed.meta.n;
+
+        this.root = new Node(null, "ROOT");
+        populate(this.root, parsed.root);
+    }
+
+    * generate(seed, terminateToken, opts = {}) {
+        const lookBackLength = opts.lookBackLength || 5
+        const minLength = opts.minLength || 10;
+        let tries = 0, tokens = [], usedStarts = [];
+        let count = 0;
+        let markedNodes = [];
+        //----------------------------------
+        const unmarkNodes = () => {
+            markedNodes.forEach(n => n.marked = false);
+        }
+
+        const markNode = (node) => {
+            if (node) {
+                node.marked = tokens.reduce((acc, e) => acc + e.token, '');
+                markedNodes.push(node);
+            }
+        }
+
+        const notMarked = (cn) => {
+            let tmap = tokens.reduce((acc, e) => acc + e.token, '');
+            return cn.marked !== tmap;
+        }
+
+        const validate = (next) => {
+            markNode(next);
+            let slice = tokens.slice(tokens.length - lookBackLength).map(t => t.token);
+            slice.push(next.token);
+
+            if (!opts.allowDuplicates && isSubArray(slice, tokens.slice(0, tokens.length - lookBackLength).map(t => t.token))) {
+                fail();
+                return false;
+            }
+
+            tokens.push(next);
+            return true;
+        }
+
+        const fail = (forceBacktrack) => {
+            tries++;
+            if (tries >= this.maxAttempts) throw Error("[fail]: reach maxArrempts");
+            let parent = this._pathTo(tokens);
+            let numOfChildren = parent ? parent.childNodes({ filter: notMarked }).length : 0;
+
+            if (forceBacktrack || numOfChildren === 0) {
+                backtrack();
+            }
+        }
+
+        const backtrack = () => {
+            //?
         }
     }
 
-    loadModel(model) {
-        let m = {};
-        let parsed = parse(model);
-        m.sentenceEnds = new Set(...parsed.meta.sentenceEnds)
-        m.sentenceStarts = parsed.meta.sentenceStarts.slice();
-        m.n = parsed.meta.n;
-
-        m.root = new Node(null, "ROOT");
-        populate(m.root, parsed.root);
-        this.models.push(m)
+    _pathTo() {
+        
     }
 }
 

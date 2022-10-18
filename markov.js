@@ -155,18 +155,97 @@ class Markov {
             let parent = this._pathTo(tokens);
             let numOfChildren = parent ? parent.childNodes({ filter: notMarked }).length : 0;
 
-            if (forceBacktrack || numOfChildren === 0) {
-                backtrack();
-            }
+            // if (forceBacktrack || numOfChildren === 0) {
+            //     backtrack();
+            // }
         }
 
         const backtrack = () => {
-            //?
+            // no backtrack
+            let parent, tc;
+            for (let i = 0; i < 99; i++) {
+                let last = tokens.pop();
+                markNode(last);
+
+                //if (this._isEnd(last)) sentenceIdxs.pop();
+
+                //
+            }
         }
+
+        const sentenceIdx = () => {
+            let len = sentenceIdxs.length;
+            return len ? sentenceIdxs[len - 1] : 0;
+        }
+
+        const selectStart = () => {
+            let seed = opts.seed;
+            if (seed && seed.length) {
+                if (typeof seed === 'string') seed = this.tokenize(seed);
+                let node = this._pathTo(seed, this.root);
+                while (!node.isRoot()) {
+                    tokens.unshift(node);
+                    node = node.parent;
+                }
+            }
+            else if (!tokens.length || this._isEnd(tokens[tokens.length - 1])) {
+                let usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
+                if (!usableStarts.length) throw Error('No valid sentence-starts remaining');
+                let start = RiTa().random(usableStarts);
+                let startTok = this.root.child(start);
+                markNode(startTok);
+                usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
+                tokens.push(startTok);
+            } else {
+
+            }
+        }
+
+        ////////////////////////////////////// //////////////////////
+        selectStart();
+
+        while (!opts.exitCondition) {
+            let parent = this._pathTo(tokens);
+            let next = this._selectNext(parent, opts.temperature, tokens, notMarked);
+
+            if (!next) {
+                fail();
+                continue;
+            }
+
+            tokens.push(next);
+            yield next.token;
+            if (tokens.length > 100) unmarkNodes();
+        }
+
     }
 
-    _pathTo() {
-        
+    _pathTo(path, root) {
+        root = root || this.root;
+        if (typeof path === 'string') path = [path];
+        if (!path || !path.length || this.n < 2) return root;
+        let idx = Math.max(0, path.length - (this.n - 1));
+        let node = root.child(path[idx++]);
+        for (let i = idx; i < path.length; i++) {
+            if (node) node = node.child(path[i]);
+        }
+        return node; // can be undefined
+    }
+
+    _selectNext(parent, tenp, tokens, filter) {
+        if (!parent) throw new Error("[_selectNext]: no parent! at: " + this._flatten(tokens));
+        let children = parent.childNodes({ filter });
+        if (!children.length) return;
+
+        return parent.pselect(filter);
+    }
+
+    _flatten(nodes) {
+        if (!nodes || (Array.isArray(nodes) && !nodes.length)) return '';
+        if (nodes.token) return nodes.token; // single-node 
+        let arr = nodes.map(n => n ? n.token : '[undef]');
+        let sent = this.untokenize(arr);
+        return sent.replace(/\s+/, ' ');
     }
 }
 

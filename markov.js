@@ -16,7 +16,7 @@ function isSubArray(find, arr) {
 }
 
 const randomnizer = new Mt();
-const sentenceSeparater = ";";
+const sentenceSeparater = /[;；]/;
 const tokenSeparater = "/";
 
 /*
@@ -104,7 +104,7 @@ class Markov {
 
     loadModel(model) {
         let parsed = parse(model);
-        this.sentenceEnds = new Set(...parsed.meta.sentenceEnds)
+        this.sentenceEnds = new Set(parsed.meta.sentenceEnds)
         this.sentenceStarts = parsed.meta.sentenceStarts.slice();
         this.n = parsed.meta.n;
 
@@ -112,7 +112,7 @@ class Markov {
         populate(this.root, parsed.root);
     }
 
-    * generate(seed, terminateToken, opts = {}) {
+    * generate(opts = {}) {
         const lookBackLength = opts.lookBackLength || 5
         const minLength = opts.minLength || 10;
         let tries = 0, tokens = [], usedStarts = [];
@@ -158,6 +158,9 @@ class Markov {
             // if (forceBacktrack || numOfChildren === 0) {
             //     backtrack();
             // }
+            if (forceBacktrack || numOfChildren === 0) {
+                return reSelectedSS();
+            }
         }
 
         const backtrack = () => {
@@ -181,7 +184,6 @@ class Markov {
         const selectStart = () => {
             let seed = opts.seed;
             if (seed && seed.length) {
-                if (typeof seed === 'string') seed = this.tokenize(seed);
                 let node = this._pathTo(seed, this.root);
                 while (!node.isRoot()) {
                     tokens.unshift(node);
@@ -191,7 +193,7 @@ class Markov {
             else if (!tokens.length || this._isEnd(tokens[tokens.length - 1])) {
                 let usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
                 if (!usableStarts.length) throw Error('No valid sentence-starts remaining');
-                let start = RiTa().random(usableStarts);
+                let start = randomnizer.random(usableStarts);
                 let startTok = this.root.child(start);
                 markNode(startTok);
                 usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
@@ -201,20 +203,32 @@ class Markov {
             }
         }
 
+        const reSelectedSS = () => {
+            let usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
+            if (!usableStarts.length) throw Error('No valid sentence-starts remaining');
+            let start = randomnizer.random(usableStarts);
+            let startTok = this.root.child(start);
+            markNode(startTok);
+            usableStarts = this.sentenceStarts.filter(ss => notMarked(this.root.child(ss)));
+            return startTok;
+        }
+
         ////////////////////////////////////// //////////////////////
         selectStart();
-
+        yield tokens.map(t => t.token);
         while (!opts.exitCondition) {
             let parent = this._pathTo(tokens);
             let next = this._selectNext(parent, opts.temperature, tokens, notMarked);
-
             if (!next) {
-                fail();
-                continue;
+                //console.log(parent);
+                let rss = fail();
+                if (!rss) continue;
+                tokens.push(rss);
+                yield tokens.map(t => t.token);
             }
 
             tokens.push(next);
-            yield next.token;
+            yield tokens.map(t => t.token);
             if (tokens.length > 100) unmarkNodes();
         }
 
@@ -235,7 +249,7 @@ class Markov {
     _selectNext(parent, tenp, tokens, filter) {
         if (!parent) throw new Error("[_selectNext]: no parent! at: " + this._flatten(tokens));
         let children = parent.childNodes({ filter });
-        if (!children.length) return;
+        if (!children.length) { console.log(parent.children); return };
 
         return parent.pselect(filter);
     }
@@ -268,6 +282,7 @@ class Node {
     pselect(filter) {
         const children = this.childNodes({ filter });
         if (!children.length) throw Error('No eligible child for "' + this.token + "\" children=[" + this.childNodes().map(t => t.token) + "]");
+        if (children.length === 1) return children[0];
         const weights = children.map(n => n.count);
         const idx = randomnizer.selectGeneral(weights);
         return children[idx];

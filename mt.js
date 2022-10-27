@@ -73,8 +73,8 @@ export default class Mt {
 
     selectGeneral(weights) {
         let sum = weights.reduce((acc, ele) => acc + ele, 0);
-        let rand = this._rndf() * sum; 
-        return weights.find(ele => (rand -= ele) < 0);
+        let rand = Math.random() * sum; 
+        return weights.findIndex(ele => (rand -= ele) < 0);
     }
 
     //useful?
